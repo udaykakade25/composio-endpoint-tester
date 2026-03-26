@@ -1,8 +1,11 @@
 # Architecture
 
+---
+
 ### 1. **Design overview** — How does your agent work? What's the high-level flow?
 
-**Phase 1 — Context Gathering:**:
+**Phase 1 — Context Gathering:**
+
 Before making any API Endpoin, we use agent to pre-fetch the below context which would be used later.
 
 - `userEmail` — fetched from Gmail profile, used to construct valid RFC 2822 email bodies for send/draft endpoints
@@ -21,36 +24,43 @@ For each endpoint:
 4. Extract HTTP status code using `extractHttpStatus` and classify the endpoint
 5. Record this classified API endpoint in report.json
 
+---
+
 ### 2. **Dependency resolution** — How does your agent handle endpoints that need data from other endpoints (e.g., fetching an ID before calling a detail endpoint)?
 
 We pre-fetch some of data before making API call. Some endpoints require ID in their path which comes from prior API call.
 
-`messageId`: `GET /gmail/v1/users/me/messages?maxResults=1` is fetched before making endpoint API calls, meaning all the endpoint that require `messageId` can reuse this message id.
-`eventId`: `GET /calendar/v3/calendars/primary/events?maxResults=1` Similar to `messageId`, we fetch Event ID which is later used across serveral API calls.
+- `messageId`: `GET /gmail/v1/users/me/messages?maxResults=1` is fetched before making endpoint API calls, meaning all the endpoint that require `messageId` can reuse this message id.
+- `eventId`: `GET /calendar/v3/calendars/primary/events?maxResults=1` Similar to `messageId`, we fetch Event ID which is later used across serveral API calls.
 
-3. **Avoiding false negatives** — How does your agent minimize misclassifying valid endpoints invalid due to its own mistakes (bad params, missing body, etc.)?
+---
+
+### 3. **Avoiding false negatives** — How does your agent minimize misclassifying valid endpoints invalid due to its own mistakes (bad params, missing body, etc.)?
 
 - Real IDs in path: We provide real IDs (`GET /messages/{messageId}`). Use of demo/fake ID would definetly provide 404 while valid ones provides accurate data.
 - `HTTP Status`: Using `extractHttpStatus` - we check status code across serveral locations in response (`result.data.status`, `result.data.response_data.status`) thus extracting correct status code.
 - Providing Accurate Request Body: Using `buildBody` function, we format and encode data to base64url which is used for sending and drafting the email, Thus avoiding 4XX errors.
 
-4.  **Classification logic** — How does your agent decide between valid, invalid_endpoint,insufficient_scopes, and error?
+---
+
+### 4. **Classification logic** — How does your agent decide between valid, invalid_endpoint, insufficient_scopes, and error?
 
 Based on HTTP response and status code, we determine if the endpoint was valid or not. Using API's own response accurately validiates our endpoints.
 
-- 2xx - valid
-- 404, 405, 501 - invalid (URL Path does not exist)
-- 401, 403 - insufficient_scopes - connected accounts has not permission to access the data
-- OTHER - error
+- `2xx` — valid
+- `404`, `405`, `501` — invalid (URL Path does not exist)
+- `401`, `403` — insufficient_scopes - connected accounts has not permission to access the data
+- OTHER — error
 
-5. **Tradeoffs** — What tradeoffs did you make? What would you improve with more time?
+---
+
+### 5. **Tradeoffs** — What tradeoffs did you make? What would you improve with more time?
 
 **PRIORITIZED:**
 
 - Accuray > Speed (All endpoints are correctly validiated)
 - `available_scopes`: This property is always `[]` thus we don't fetch for actual OAuth scopes that are available in our account.
-- Order: Endpoints are ordered in such a way that sequence matters.
-  We DRAFT EMAIL before DELETING it.
+- Order: Endpoints are ordered in such a way that sequence matters. We DRAFT EMAIL before DELETING it.
 - Sequential Execuation of API Endpoints: `DELETE_EVENT` depends on `CREATE_EVENT` similary `TRASH_MESSAGE` depends on `CREATE_DRAFT`
 
 **With more time:**
@@ -60,15 +70,16 @@ Based on HTTP response and status code, we determine if the endpoint was valid o
 - Ensure there is no strict depedency across various endpoints.
 - Retry logic for consistent network failures
 
-6. **Architecture pattern** — Why did you choose your particular pattern (single agent, multi-agent, orchestrator, etc.)? What are the pros and cons?
+---
+
+### 6. **Architecture pattern** — Why did you choose your particular pattern (single agent, multi-agent, orchestrator, etc.)? What are the pros and cons?
 
 The agent uses a **single sequential agent** instead of orchestrator or multi-agent.
 
 **Reasons:**
 
 - There are just 16 endpoints and that too dependent on each other.
-- Depedencies between various endpoints across Gmail and Google Calendar.
-  For Google Calendar: DELETE_EVENT and GET_EVENT endpoints are dependent on CREATE_EVENT thus singe agent handles it perfectly.
+- Depedencies between various endpoints across Gmail and Google Calendar. For Google Calendar: `DELETE_EVENT` and `GET_EVENT` endpoints are dependent on `CREATE_EVENT` thus singe agent handles it perfectly.
 
 **Pros:**
 
